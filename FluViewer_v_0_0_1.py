@@ -201,7 +201,7 @@ def filter_alignments(output, blast_out, min_cov, min_id):
     # Discard contigs that do not provide minimum coverage of a segment
     blast_results = blast_results[blast_results['qlen'] * 100 / blast_results['slen'] >= min_cov]
     # De-duplicate sheet
-    cols = ['qseqid', 'sseqid', 'segment', 'subtype', 'slen']
+    cols = ['qseqid', 'sseqid', 'segment', 'subtype', 'slen', 'bitscore']
     blast_results = blast_results[cols].drop_duplicates()
     if len(blast_results) == 0:
         print('DONE: No valid contigs found.')
@@ -250,9 +250,12 @@ def write_best_ref_seqs_fasta(output, blast_results, ref_seqs_db):
     if len(HA_subtypes) > 1 or len(NA_subtypes) > 1:
         print('WARNING: Multiple HA or NA subtypes detected. Internal segment sequences are not generated in align mode for mixed infections.')
         blast_results = blast_results[blast_results['segment'].isin(['HA', 'NA'])]
-    # Choose one ref seq length for each segment/subtype combination
-    ref_seq_lengths = blast_results[['segment', 'subtype', 'slen']].groupby(['segment', 'subtype']).quantile(0.5, interpolation='higher').reset_index()
-    blast_results = pd.merge(blast_results, ref_seq_lengths, on=['segment', 'subtype', 'slen'])
+    # Choose ref seqs with max bitscore for each segment/subtype combination
+    best_bitscores = blast_results[['segment', 'subtype', 'bitscore']].groupby(['segment', 'subtype']).max().reset_index()
+    blast_results = pd.merge(blast_results, best_bitscores, on=['segment', 'subtype', 'bitscore'])
+    # Chose ref seqs with median length for each segment/subtype combination
+    median_lengths = blast_results[['segment', 'subtype', 'slen']].groupby(['segment', 'subtype']).quantile(0.5, interpolation='higher').reset_index()
+    blast_results = pd.merge(blast_results, median_lengths, on=['segment', 'subtype', 'slen'])
     # Choose first alphabetical ref seq for each segment/subtype combination
     first_ref_seqs = blast_results[['sseqid', 'segment', 'subtype']].groupby(['segment', 'subtype']).min().reset_index()
     blast_results = pd.merge(blast_results, first_ref_seqs, on=['sseqid', 'segment', 'subtype'])
