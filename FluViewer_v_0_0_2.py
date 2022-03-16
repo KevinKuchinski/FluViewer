@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def main():
-    version = '0.0.1'
+    version = '0.0.2'
     args = parse_args(sys.argv, version)
     print(f'\nFluViewer v{version}')
     print('https://github.com/KevinKuchinski/FluViewer\n')
@@ -271,7 +271,6 @@ def filter_alignments(output, blast_out, min_cov, min_id):
     if len(blast_results) == 0:
         print('DONE: No valid contigs found.')
         exit(0)
-    blast_results.to_csv('blah.tsv')
     return blast_results
 
 
