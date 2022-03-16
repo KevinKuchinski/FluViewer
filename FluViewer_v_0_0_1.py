@@ -472,7 +472,6 @@ def garbage_collection(output):
     files += [low_cov]
     for file in files:
         os.remove(file)
-    bam_out = os.path.join(output, output + '_alignment_filtered_sorted.bam')
     idxstats = os.path.join(output, output + '_reads_mapped_to_consensus_seqs.tsv')
     files = [bam_out + suffix for suffix in ['', '.bai']] + [idxstats]
     for file in files:
