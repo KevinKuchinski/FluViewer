@@ -248,7 +248,7 @@ def write_best_ref_seqs_fasta(output, blast_results, ref_seqs_db):
     HA_subtypes = blast_results[blast_results['segment']=='HA']['subtype'].unique()
     NA_subtypes = blast_results[blast_results['segment']=='NA']['subtype'].unique()
     if len(HA_subtypes) > 1 or len(NA_subtypes) > 1:
-        print('WARNING: Multiple HA or NA subtypes detected. Internal segment sequences are not generated in align mode for mixed infections.')
+        print('WARNING: Multiple HA or NA subtypes detected. Internal segment sequences are not generated for mixed infections in align mode.')
         blast_results = blast_results[blast_results['segment'].isin(['HA', 'NA'])]
     # Choose ref seqs with max bitscore for each segment/subtype combination
     best_bitscores = blast_results[['segment', 'subtype', 'bitscore']].groupby(['segment', 'subtype']).max().reset_index()
