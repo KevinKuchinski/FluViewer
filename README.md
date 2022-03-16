@@ -65,7 +65,12 @@ For example:
 ```
 
 ## FluViewer Output
-FluViewer generates a FASTA file containing consensus sequences for influenza A virus genome segments and a report TSV file. Headers in the FASTA file have the following format:
+FluViewer generates three outputfiles:
+1. A FASTA file containing consensus sequences for influenza A virus genome segments
+2. A sorted BAM file with reads mapped to either the choosen reference sequences (align mode) or the assembled contigs (assembly mode)
+3. A report TSV file describing segment, subtype, and sequencing metrics for each consensus sequence
+
+Headers in the FASTA file have the following format:
 ```
 >output_name_unique_sequence_number|segment|subject
 ```
