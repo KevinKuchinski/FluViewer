@@ -429,12 +429,20 @@ def make_consensus_seqs(output, bam_out, min_depth, min_cov, ref_seqs, vcf_out):
     segment_order = ['PB2', 'PB1', 'PA', 'HA', 'NP', 'NA', 'M', 'NS']
     header_order = sorted(seqs.keys(), key=lambda s: segment_order.index(s.split('|')[1]))
     seqs = {header: seqs[header] for header in header_order}
+    # Remove seqs that where the number of sequenced bases does not exceed the min coverage of the median ref seq length
+    ref_seq_length = lambda header: int(header.split('|')[-1])
+    sequenced_bases = lambda seq: len([base for base in seq if base in 'ATGC'])
+    sufficient_cov = lambda header, seq: True if sequenced_bases(seq) * 100 / ref_seq_length(header) >= min_cov else False
+    seqs = {header: seq for header, seq in seqs.items() if sufficient_cov(header, seq) == True}
+    # Check if any consensus seqs remain
+    if len(seqs) == 0:
+        print('\nDONE: No consensus seqs exceeding minimum coverage of segment.\n')
+        exit(0)
+    # Write out consensus seqs
     with open(consensus_seqs, 'w') as output_file:
         for header, seq in seqs.items():
-            ref_seq_length = int(header.split('|')[-1])
-            if len([base for base in seq if base in 'ATGC']) * 100 / ref_seq_length >= min_cov:
-                output_file.write(header + '\n')
-                output_file.write(seq + '\n')
+            output_file.write(header + '\n')
+            output_file.write(seq + '\n')
     return consensus_seqs
 
 
