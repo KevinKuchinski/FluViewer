@@ -5,9 +5,10 @@ import shutil as sh
 import numpy as np
 import pandas as pd
 
+from . import __version__
 
 def main():
-    version = '0.0.2'
+    version = __version__
     args = parse_args(sys.argv, version)
     print(f'\nFluViewer v{version}')
     print('https://github.com/KevinKuchinski/FluViewer\n')
