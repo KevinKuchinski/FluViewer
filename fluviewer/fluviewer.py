@@ -370,7 +370,7 @@ def map_reads(output, ref_seqs, fwd_reads, rev_reads):
     stderr_file = os.path.join(output, 'logs', output + '_bwa_mem_stderr.txt')
     run(terminal_command, error_msg, stdout_file, stderr_file)
     bam_out = os.path.join(output, output + '_alignment_filtered_sorted.bam')
-    terminal_command = f'samtools view -f 3 -F 2828 -q 30 -h {sam_out} | samtools sort -o {bam_out}'
+    terminal_command = f'samtools view -f 1 -F 2828 -q 30 -h {sam_out} | samtools sort -o {bam_out}'
     error_msg = f'samtools view/sort terminated with errors while filtering and sorting mapped reads. Please refer to /{output}/logs/ for output logs.'
     stdout_file = os.path.join(output, 'logs', output + '_samtools_view_sort_stdout.txt')
     stderr_file = os.path.join(output, 'logs', output + '_samtools_view_sort_stderr.txt')
