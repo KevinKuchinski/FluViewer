@@ -21,6 +21,7 @@ def main():
     print('Reference sequences:', args['-d'])
     print()
     check_input_files(args['-f'], args['-r'], args['-d'])
+    check_database(args['-d'])
     make_output_dir(args['-n'])
     normalize_depth(args['-n'], args['-f'], args['-r'], args['-N'], args['-g'])
     assemble_contigs(args['-n'], args['-T'], args['-g'])
@@ -204,6 +205,50 @@ def check_input_files(fwd_reads, rev_reads, db):
             print('\nERROR: Input file does not exist.\n')
             error_code = 1
             exit(error_code)
+
+
+def check_database(db):
+    ''' Checks the contents of the provided reference sequence database to
+    ensure proper header formatting and unambiguous sequences. ''' 
+    print('Checking reference sequence database...')
+    total_entries = 0
+    unique_headers = list()
+    with open(db, 'r') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if line[0] == '>':
+                total_entries += 1
+                header = line
+                unique_headers.append(header)
+                if len(line.split('|')) != 4:
+                    print(f'\nERROR: The header for the following database entry '
+                          f'does not contain the expected number of |-delimited '
+                          f'fields:\n{header}\n')
+                    exit(1)
+                else:
+                    accession, name, segment, subtype = line.split('|')
+                    if any([name.count('(') != 1, name.count(')') != 1,
+                            name[-1] != ')', name.index('(') > name.index(')')]):
+                        print(f'\nERROR: The strain name (strain subtype) for '
+                              f'the following database entry is improperly'
+                              f' formatted:\n{header}\n')
+                        exit(1)
+                    if segment not in 'PB2 PB1 PA HA NP NA M NS'.split(' '):
+                        print(f'\nERROR: The segment indicated for the following '
+                              f'database entry is not recognized:\n{header}\n')
+                        exit(1)
+            else:
+                if len(line.strip()) != sum(line.count(base) for base in 'ATGC'):
+                        print(f'\nERROR: The sequence provided for the '
+                              f'following database entry contains ambiguous or '
+                              f'lower-case nucleotides:\n{header}\n')
+                        exit(1)
+    unique_headers = Counter(unique_headers)
+    for header in unique_headers:
+        if unique_headers[header] > 1:
+            print(f'\nERROR: The following database entry does not have a unique '
+                  f'header:\n{header}\n')
+            exit(1)
 
 
 def make_output_dir(out_name):
@@ -639,8 +684,7 @@ def make_mapping_refs(blast_results, db, out_name):
     ''' Mapping references are created for each genome segment. These consist of
     the scaffold for that segment, with all Ns in the scaffold filled-in using
     the corresponding positions from that scaffold's best-matching reference
-    sequence. Bases from the reference sequence are writen in lower case, while
-    bases from the scaffold are writen in upper case. '''
+    sequence. '''
     print('Creating mapping references...')
     ''' Create dict with best-matching ref seq for each segment. '''
     sseqids = blast_results['sseqid'].unique()
@@ -650,7 +694,7 @@ def make_mapping_refs(blast_results, db, out_name):
             if line[0] == '>':
                 header = line.strip()[1:]
             elif header in best_ref_seqs:
-                best_ref_seqs[header] += line.strip().lower()
+                best_ref_seqs[header] += line.strip()
     ''' Create mapping ref for each segment. '''
     def make_map_ref(data_frame):
         data_frame = data_frame.sort_values(by='start')
@@ -658,7 +702,7 @@ def make_mapping_refs(blast_results, db, out_name):
         last_position = 0
         seq = ''
         for index, row in data_frame.iterrows():
-            seq += sseq[last_position:row['start'] - 1].lower()
+            seq += sseq[last_position:row['start'] - 1]
             seq += row['qseq'].upper()
             last_position = row['end']
         seq += sseq[last_position:].lower()
