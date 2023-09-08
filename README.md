@@ -85,6 +85,7 @@ For HA and NA segments, strain_subtype should reflect the HA and NA subtypes of 
 
 For internal segments (i.e. PB2, PB1, PA, NP, M, and NS), strain_subtype should reflect the HA/NA subtypes of the isolate, but 'none' should be entered for sequence_subtype. If strain_subtype is unknown, 'none' should be entered there as well.
 
+Only high-quality, complete segment sequences should be used in the reference database. Providing reference sequences with Ns and other ambiguous nucleotides may result in inaccurate variant calls and, consequently, inaccurate consensus sequences.
 
 ## FluViewer Output
 FluViewer generates four main output files for each library:
