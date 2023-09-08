@@ -1,19 +1,24 @@
 # FluViewer
-A tool for generating influenza A virus genome sequences from FASTQ data
+
+FluViewer is an automated pipeline for generating influenza A virus (IAV) genome sequences from FASTQ data. If provided with a sufficiently diverse and representative database of IAV reference sequences, it can generate sequences regardless of host and subtype without any human intervention required.
+
+Here is a brief description of the FluViewer process. First, the provided reads are normalized and downsampled using a kmer-based approach to reduce any excessive coverage of certain genome regions. Next, the normalized/downsampled reads are assembled de novo into contigs. The contigs are then aligned to a database of IAV reference sequences. These alignments are used to trim contigs and roughly position them within their respective genome segment. Afterwards, a multiple sequencing alignment in conducted on the trimmed/positioned contigs, generating scaffold sequences for each IAV genome segment. Next, these scaffolds are aligned to the IAV reference sequence database to find their best matches. These best matches are used to fill in any missing regions in the scaffold, creating mapping references. The normalized/downsampled reads are mapped to these mapping references, then variants are called and the final consensus genomes are produced. 
 
 ## Installation
-1. FluViewer requires the following dependencies, and it is recommended to install them in a FluViewer virtual environment (indicated versions were tested, but later versions can likely be substituted):
-- python v3.8.5
-- pandas v1.3.5
-- spades v3.15.3
-- blast v2.12.0
+1. Create a virtual environment and install the following:
+- bbmap v39.01
+- bcftools v1.17
+- blast v2.14.1
 - bwa v0.7.17
-- samtools v1.14
-- bcftools v1.14
-- bedtools v2.30.0
-- seqtk v1.3
+- clustalw v2.1
+- freebayes v1.3.6
+- pandas v2.0.3
+- python 3.8.5
+- samtools v1.17
+- seaborn v0.12.2
+- spades v3.15.3
 
-2. Once the dependencies have been installed, install the latest FluViewer release via PyPI:
+2. Install the latest FluViewer release via PyPI:
 ```
 pip3 install FluViewer
 ```
@@ -22,70 +27,90 @@ pip3 install FluViewer
 
 ## Usage
 ```
-FluViewer -f <path_to_fwd_reads> -r <path_to_rev_reads> -d <path_to_db_file> -o <output_name> -m <mode> [-D <min_depth> -q <min_qual> -c <min_cov> -i <min_id>] [-g]
+FluViewer -f <path_to_fwd_reads> -r <path_to_rev_reads> -d <path_to_db_file> -n <output_name> [ <optional_args> ]
 ```
 
 <b>Required arguments:</b>
 
--f : path to FASTQ file containing forward reads
+-f : path to FASTQ file containing forward reads (trim sequencing adapters/primer before analysis)
 
--r : path to FASTQ file containing reverse reads
+-r : path to FASTQ file containing reverse reads (trim sequencing adapters/primer before analysis)
 
 -d : path to FASTA file containing FluViewer database (details below)
 
--o : output name (creates directory with this name for output, includes this name in output files, and in consensus sequence headers)
-
--m : FluViewer run mode (align or assemble)
+-n : output name (creates directory with this name for output, includes this name in output files, and in consensus sequence headers)
 
 
 <b>Optional arguments:</b>
 
--D : Minimum read depth for base calling (default = 20)
+-i : Minimum sequence identity between database reference sequences and contigs (percentage, default = 90, min = 0, max = 100)
 
--q : Minimum PHRED score for base quality and mapping quality (default = 30)
+-l : Minimum length of alignment between database reference sequences and contigs (int, default = 50, min = 32)
 
--c : Minimum coverage of database reference sequence by contig (percentage, default = 25)
+-D : minimum read depth for base calling (int, default = 20,  min = 1)
 
--i : Minimum nucleotide sequence identity between database reference sequence and contig (percentage, default = 95)
+-q : Minimum PHRED score for mapping quality and base quality during variant calling (int, default = 20, min = 0)
+
+-v : Variant allele fraction threshold for calling variants (float, default = 0.95, min = 0, max = 1)
+
+-V : Variant allele fraction threshold for masking ambiguous variants (float, default = 0.25, min = 0, max = 1
+
+-N : Target depth for pre-normalization of reads (int, default = 200, min = 1)
+
+-T : Threads used for BLAST alignments (int, default = 1, min = 1)
 
 
 <b>Optional flags:</b>
 
--g : Set this flag to deactivate garbage collection and retain intermediate files
+-g : Disable garbage collection and retain intermediate analysis files
 
 
 ## FluViewer Database
-FluViewer requires a curated FASTA file "database" of influenza A virus reference sequences. Headers for these sequences must be formatted and annotated as follows:
+FluViewer requires a curated FASTA file "database" of IAV reference sequences. Headers for these sequences must be formatted and annotated as follows:
 ```
->unique_id|strain_name|segment|subtype
+>unique_id|strain_name(strain_subtype)|sequence_segment|sequence_subtype
 ```
-For example:
+Here is an example entry:
 ```
->MF599463|A/swine/Kansas/A01378028/2017|HA|H3
+>CY230322|A/Washington/32/2017(H3N2)|PB2|none
+TCAATTATATTCAGCATGGAAAGAATAAAAGAACTACGGAATCTAATGTCGCAGTCTCGCACTCGCGA...
 ```
 
 ## FluViewer Output
-FluViewer generates three outputfiles:
-1. A FASTA file containing consensus sequences for influenza A virus genome segments
-2. A sorted BAM file with reads mapped to either the choosen reference sequences (align mode) or the assembled contigs (assembly mode)
-3. A report TSV file describing segment, subtype, and sequencing metrics for each consensus sequence
+FluViewer generates four main output files for each library:
+1. A FASTA file containing consensus sequences for the IAV genome segments
+2. A sorted BAM file with reads mapped to the mapping references generated for that library (the mapping reference is also retained)
+3. A report TSV file describing segment, subtype, and sequencing metrics for each consensus sequence generated
+4. Depth of coverage plots for each segment
 
 Headers in the FASTA file have the following format:
 ```
->output_name_unique_sequence_number|segment|subject
+>output_name|segment|subject
 ```
-The report TSV file contains the following columns:
 
-<b>consensus_seq</b> : the name of the consensus sequence described by this row
 
-<b>segment</b> : influenza A virus genome segment (PB2, PB1, PA, HA, NP, NA, M, NS)
+The report TSV files contain the following columns:
+
+<b>seq_name</b> : the name of the consensus sequence described by this row
+
+<b>segment</b> : IAV genome segment (PB2, PB1, PA, HA, NP, NA, M, NS)
 
 <b>subtype</b> : HA or NA subtype ("none" for internal segments)
 
-<b>mapped reads</b> : the number of sequencing reads mapped to this segment
+<b>reads_mapped</b> : the number of sequencing reads mapped to this segment (post-normalization/downsampling)
 
 <b>seq_length</b> : the length (in nucleotides) of the consensus sequence generated by FluViewer
 
-<b>sequenced_bases</b> : the number of nucleotide positions in the consensus sequence with sufficient depth of coverage (set by -D argument) and a succesful base call (e.g. A, T, G, or C)
+<b>scaffold_completeness</b> : the number of nucleotide positions in the scaffold that were assembled from the provided reads (post-normalization/downsampling)
 
-<b>segment_cov</b> : the number of sequenced bases in the consensus sequence divided by the typical length of this genome segment (as a percentage). The typical segment length is determined by finding the median length of the segment/subject reference sequences whose contig alignments have the highest bitscore.
+<b>consensus_completeness</b> : the number of nucleotide positions in the consensus with a succesful base call (e.g. A, T, G, or C)
+
+<b>ref_seq_used</b> : the unique ID and strain name of the scaffold's best-matching reference sequence used for filling in missing regions in the scaffold (if the scaffold completeness was 100%, then this is provided pro forma as none of it was used to create the mapping reference)
+
+
+The depth of coverage plots contains the following elements:
+- A black line indicating the depth of coverage pre-variant calling
+- A blue line indicating the depth of coverage post-variant calling
+- Red shading covering positions where coverage was too low for base calling
+- Orange lines indicating positions where excess variation resulted in an ambiguous base call
+- Blue lines indicating positions where a variant was called
