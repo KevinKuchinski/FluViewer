@@ -70,11 +70,21 @@ FluViewer requires a curated FASTA file "database" of IAV reference sequences. H
 ```
 >unique_id|strain_name(strain_subtype)|sequence_segment|sequence_subtype
 ```
-Here is an example entry:
+Here are some example entries:
 ```
 >CY230322|A/Washington/32/2017(H3N2)|PB2|none
 TCAATTATATTCAGCATGGAAAGAATAAAAGAACTACGGAATCTAATGTCGCAGTCTCGCACTCGCGA...
+
+>JX309816|A/Singapore/TT454/2010(H1N1)|HA|H1
+CAAAAGCAACAAAAATGAAGGCAATACTAGTAGTTCTGCTATATACATTTACAACCGCAAATGCAGACA...
+
+>MH669720|A/Iowa/52/2018(H3N2)|NA|N2
+AGGAAAGATGAATCCAAATCAAAAGATAATAACGATTGGCTCTGTTTCTCTCACCATTTCCACAATATG...
 ```
+For HA and NA segments, strain_subtype should reflect the HA and NA subtypes of the isolate (eg H1N1), but sequence_subtype should only indicate the HA or NA subtype of the segment sequence of the entry (eg H1 for an HA sequence or N1 for an NA sequence).
+
+For internal segments (i.e. PB2, PB1, PA, NP, M, and NS), strain_subtype should reflect the HA/NA subtypes of the isolate, but 'none' should be entered for sequence_subtype. If strain_subtype is unknown, 'none' should be entered there as well.
+
 
 ## FluViewer Output
 FluViewer generates four main output files for each library:
