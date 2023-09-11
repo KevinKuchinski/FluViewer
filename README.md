@@ -5,25 +5,22 @@ FluViewer is an automated pipeline for generating influenza A virus (IAV) genome
 Here is a brief description of the FluViewer process. First, the provided reads are normalized and downsampled using a kmer-based approach to reduce any excessive coverage of certain genome regions. Next, the normalized/downsampled reads are assembled de novo into contigs. The contigs are then aligned to a database of IAV reference sequences. These alignments are used to trim contigs and roughly position them within their respective genome segment. Afterwards, a multiple sequencing alignment in conducted on the trimmed/positioned contigs, generating scaffold sequences for each IAV genome segment. Next, these scaffolds are aligned to the IAV reference sequence database to find their best matches. These best matches are used to fill in any missing regions in the scaffold, creating mapping references. The normalized/downsampled reads are mapped to these mapping references, then variants are called and the final consensus genomes are produced. 
 
 ## Installation
-1. Create a virtual environment and install the following:
-- bbmap v39.01
-- bcftools v1.17
-- blast v2.14.1
-- bwa v0.7.17
-- clustalw v2.1
-- freebayes v1.3.6
-- pandas v2.0.3
-- python 3.8.5
-- samtools v1.17
-- seaborn v0.12.2
-- spades v3.15.3
+1. Create a virtual environment and install the necessary dependencies using the YAML file provided in this repository. For example, if using conda:
+```
+conda create -n FluViewer -f FluViewer_v_0_1_x.yaml
+```
 
-2. Install the latest FluViewer release via PyPI:
+2. Activate the FluViewer environment created in the previous step. For example, if using conda:
+```
+conda activate FluViewer
+```
+
+3. Install the latest version of FluViewer from the Python Packing Index (PyPI).
 ```
 pip3 install FluViewer
 ```
 
-3. Download and unzip the default FluViewer DB (FluViewer_db.fa.gz) from this repository. Custom DBs can be created and used as well (instructions below).
+4. Download and unzip the default FluViewer DB (FluViewer_db.fa.gz) provided in this repository. Custom DBs can be created and used as well (instructions below).
 
 ## Usage
 ```
