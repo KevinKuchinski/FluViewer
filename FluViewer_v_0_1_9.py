@@ -11,7 +11,7 @@ from math import ceil, log10
 
 
 def main():
-    version = '0.1.8'
+    version = '0.1.9'
     args = parse_args(sys.argv, version)
     print(f'\nFluViewer v{version}')
     print('https://github.com/KevinKuchinski/FluViewer/\n')
@@ -24,7 +24,7 @@ def main():
     check_database(args['-d'])
     make_output_dir(args['-n'])
     normalize_depth(args['-n'], args['-f'], args['-r'], args['-N'], args['-g'])
-    assemble_contigs(args['-n'], args['-T'], args['-g'])
+    assemble_contigs(args['-n'], args['-g'])
     blast_results = blast_contigs(args['-d'], args['-n'], args['-g'],
                                   args['-T'], args['-i'], args['-l'])
     blast_results = filter_contig_blast_results(blast_results,
@@ -35,7 +35,7 @@ def main():
     blast_results = filter_scaffold_blast_results(blast_results)
     make_mapping_refs(blast_results, args['-d'], args['-n'])
     map_reads(args['-n'], args['-g'], args['-q'])
-    call_variants(args['-n'], args['-q'], args['-g'])
+    call_variants(args['-n'], args['-q'], args['-L'], args['-g'])
     mask_ambig_low_cov(args['-n'], args['-D'], args['-v'], args['-V'],
                        args['-q'], args['-g'])
     make_consensus_seqs(args['-n'], args['-g'])
@@ -74,17 +74,21 @@ def parse_args(args, version):
     required_args = {'-n', '-f', '-r', '-d'}
     arg_value_types = {'-n': str, '-f': str, '-r': str, '-d': str, '-i': float,
                        '-l': int, '-D': int, '-q': int, '-v': float,
-                       '-V': float, '-N': int, '-T': int, '-g': bool}
+                       '-V': float, '-N': int, '-L': int, '-T': int, '-g': bool}
     min_arg_values = {'-i': 0, '-l': 32, '-D': 1, '-q': 0,
-                      '-v': 0, '-V': 0, '-N': 1, '-T': 0}
+                      '-v': 0, '-V': 0, '-N': 1, '-L':1, '-T': 0}
     max_arg_values = {'-i': 100, '-v': 1, '-V': 1}
-    default_arg_values = {'-i': 90, '-l': 50, '-D': 20, '-q': 20, '-v': 0.95,
-                          '-V': 0.25, '-N': 200, '-g': True}
+    default_arg_values = {'-i': 90, '-l': 50, '-D': 20, '-q': 20, '-v': 0.75,
+                          '-V': 0.25, '-N': 200, '-L': 200, '-g': True}
     ''' Set garbage flag to boolean value if not provided. '''
     if '-g' not in arg_values:
         arg_values['-g'] = True
     elif '-g' in arg_values and arg_values['-g'] == '':
         arg_values['-g'] = False
+    elif '-g' in arg_values and arg_values['-g'] != '':
+        print('\nERROR: Argument -g should be provided without a value.\n')
+        print_usage(version)
+        exit(1)
     ''' Check if all required arguments were provided. '''
     missing_args = set()
     for required_arg in required_args:
@@ -187,12 +191,15 @@ def print_usage(version):
     print(' -q : Minimum PHRED score for mapping quality and base quality'
           ' during variant calling (int, default = 20, min = 0)')
     print(' -v : Variant allele fraction threshold for calling variants'
-          ' (float, default = 0.95, min = 0, max = 1)')
+          ' (float, default = 0.75, min = 0, max = 1)')
     print(' -V : Variant allele fraction threshold for masking ambiguous variants'
           ' (float, default = 0.25, min = 0, max = 1')
     print(' -N : Target depth for pre-normalization of reads'
           ' (int, default = 200, min = 1)')
-    print(' -T : Threads used for BLAST alignments (int, default = 1, min = 1)')
+    print(' -L : Coverage depth limit for variant calling'
+          ' (int, default = 200, min = 1)')
+    print(' -T : Threads used for contig/scaffold alignments'
+          ' (int, default = 1, min = 1)')
     print(' -g : Disable garbage collection and retain intermediate analysis'
           ' files (no value provided)')
     print()
@@ -332,15 +339,15 @@ def normalize_depth(out_name, fwd_reads_raw, rev_reads_raw, depth,
     run(terminal_command, out_name, process_name, error_code, collect_garbage)
 
     
-def assemble_contigs(out_name, threads, collect_garbage):
+def assemble_contigs(out_name, collect_garbage):
     ''' Normalized, downsampled reads are assembled de novo into contigs
     using SPAdes. '''
     print('Assembling reads into contigs...')
     spades_output = os.path.join(out_name, 'spades_output')
     fwd_reads = os.path.join(out_name, f'R1.fq')
     rev_reads = os.path.join(out_name, f'R2.fq')
-    terminal_command = (f'spades.py --rnaviral --isolate --threads {threads} '
-                        f'-1 {fwd_reads} -2 {rev_reads} -o {spades_output}')
+    terminal_command = (f'spades.py --rnaviral --isolate -1 {fwd_reads} '
+                        f'-2 {rev_reads} -o {spades_output}')
     process_name = 'spades'
     error_code = 3
     run(terminal_command, out_name, process_name, error_code, collect_garbage)
@@ -766,7 +773,7 @@ def map_reads(out_name, collect_garbage, min_qual):
     run(terminal_command, out_name, process_name, error_code, collect_garbage)
 
 
-def call_variants(out_name, min_qual, collect_garbage):
+def call_variants(out_name, min_qual, max_depth, collect_garbage):
     ''' FreeBayes is used to create a pileup and call variants from the
     BAM file output (map_reads func). '''
     print('Calling variants...')
@@ -774,6 +781,7 @@ def call_variants(out_name, min_qual, collect_garbage):
     filtered_alignment = os.path.join(out_name, f'{out_name}_alignment.bam')
     pileup = os.path.join(out_name, 'pileup.vcf')
     terminal_command = (f'freebayes -f {mapping_refs} {filtered_alignment} -p 1 '
+                        f'--limit-coverage {max_depth} '
                         f'--min-mapping-quality {min_qual} '
                         f'--min-base-quality {min_qual} --pooled-continuous '
                         f'--report-monomorphic --haplotype-length 0 '
@@ -791,11 +799,12 @@ def mask_ambig_low_cov(out_name, min_depth, vaf_call, vaf_ambig,
     for low coverage based on the read depth considered by FreeBayes (which
     could be lower than the read depth in the BAM depending on how FreeBayes
     applies it mapping quality and base quality filters). This also allows
-    positions to be masked as ambiguous when the number of reads differing from
-    the reference exceeds a threshold, but is not sufficient enough to
-    confidently call a specific variant. '''
+    positions to be masked as ambiguous when the number of reads differing
+    from the reference exceeds a threshold, but is not sufficient enough to
+    confidently call as a specific variant. '''
     print('Masking ambiguous and low coverage positions...')
-    input_file = open(os.path.join(out_name, 'pileup.vcf'), 'r')
+    ''' Open input/output files and initialize dicts. '''
+    pileup = open(os.path.join(out_name, 'pileup.vcf'), 'r')
     variants = open(os.path.join(out_name, f'{out_name}_variants.vcf'), 'w')
     depth_of_cov = os.path.join(out_name, f'depth_of_cov_freebayes.tsv')
     depth_of_cov = open(depth_of_cov, 'w')
@@ -803,47 +812,91 @@ def mask_ambig_low_cov(out_name, min_depth, vaf_call, vaf_ambig,
     low_cov_pos = {segment: set() for segment in segments}
     ambig_pos = {segment: set() for segment in segments}
     variant_pos = {segment: set() for segment in segments}
-    segment_name = dict()
-    for line in input_file:
-        if line[0] == '#':
-            if line[:10] == '##contig=<':
-                name = line.strip().split('<ID=')[1].split(',length=')[0]
-                segment = name.split('|')[1]
-                segment_name[segment] = name
-            variants.write(line)
+    segment_name, segment_length = dict(), {None: 0}
+    segment_length[None] = 0
+    ''' Parse header '''
+    line = pileup.readline()
+    while line != '' and line[0] == '#':
+        variants.write(line)
+        if line[:10] == '##contig=<':
+            name = line.strip().split('<ID=')[1].split(',length=')[0]
+            segment = name.split('|')[1]
+            length = int(line.strip().split(',length=')[1].split('>')[0])
+            segment_name[segment] = name
+            segment_length[segment] = length
+        line = pileup.readline()
+    ''' Parse body '''
+    last_segment = None
+    last_position = 0
+    while line != '':
+        fields = line.strip().split('\t')
+        fields = (fields[0], fields[1], fields[3], fields[4], fields[5],
+                  fields[8], fields[9])
+        name, position, ref, alt, qual, keys, values = fields
+        segment = name.split('|')[1]
+        if segment != last_segment:
+            if last_position < segment_length[last_segment]:
+                for p in range(last_position + 1,
+                               segment_length[last_segment] + 1):
+                    low_cov_pos[last_segment].add(p)
+                    depth_of_cov_line = [name, str(p), '0']
+                    depth_of_cov_line = '\t'.join(depth_of_cov_line)
+                    depth_of_cov.write(depth_of_cov_line + '\n')
+            last_position = 0
+        last_segment = segment
+        position = int(position)
+        if position != last_position + 1:
+            for p in range(last_position + 1, position):
+                low_cov_pos[segment].add(p)
+                depth_of_cov_line = [name, str(p), '0']
+                depth_of_cov_line = '\t'.join(depth_of_cov_line)
+                depth_of_cov.write(depth_of_cov_line + '\n')
+        qual = float(qual)
+        info = {k: v for k, v in zip(keys.split(':'), values.split(':'))}
+        if 'DP' in info and info['DP'].isnumeric():
+            total_depth = int(info['DP'])
         else:
-            fields = line.strip().split('\t')
-            fields = (fields[0], fields[1], fields[3], fields[4], fields[5],
-                      fields[8], fields[9])
-            segment, position, ref, alt, qual, keys, values = fields
-            info = {k: v for k, v in zip(keys.split(':'), values.split(':'))}
-            segment = segment.split('|')[1]
-            position = int(position)
-            total_depth = int(info['DP']) if info['DP'].isnumeric() else 0
+            total_depth = 0
+        if 'AO' in info:
             alt_depths = tuple(int(i) if i.isnumeric() else 0
                                for i in info['AO'].split(','))
-            max_alt_depth = max(alt_depths)
-            total_alt_depth = sum(alt_depths)
-            max_vaf = max_alt_depth / total_depth
-            total_vaf = total_alt_depth / total_depth
+        else:
+            alt_depths = (0, )
+        max_alt_depth = max(alt_depths)
+        total_alt_depth = sum(alt_depths)
+        max_vaf = max_alt_depth / total_depth if total_depth > 0 else 0
+        total_vaf = total_alt_depth / total_depth if total_depth > 0 else 0
+        if all([qual >= min_qual, max_vaf >= vaf_call,
+                total_depth >= min_depth]):
+            variants.write(line)
+        position -= 1
+        for p in ref:
+            position += 1
+            depth_of_cov_line = [name, str(position), str(total_depth)]
+            depth_of_cov_line = '\t'.join(depth_of_cov_line)
+            depth_of_cov.write(depth_of_cov_line + '\n')
             if total_depth < min_depth:
                 low_cov_pos[segment].add(position)
             elif total_vaf >= vaf_ambig and max_vaf < vaf_call:
                 ambig_pos[segment].add(position)
-            elif max_vaf >= vaf_call and float(qual) >= min_qual:
-                variants.write(line)
-                variant_pos[segment].add(position)
-            depth_of_cov_line = [segment_name[segment], position, info['DP']]
-            depth_of_cov_line = [str(i) for i in depth_of_cov_line]
-            depth_of_cov.write('\t'.join(depth_of_cov_line) + '\n')
-    input_file.close()
+        last_position = position
+        line = pileup.readline()
+    if last_position < segment_length[last_segment]:
+        for p in range(last_position + 1, segment_length[last_segment] + 1):
+            low_cov_pos[last_segment].add(p)
+            depth_of_cov_line = [name, str(p), '0']
+            depth_of_cov_line = '\t'.join(depth_of_cov_line)
+            depth_of_cov.write(depth_of_cov_line + '\n')
+    ''' Close input/output files '''
+    pileup.close()
     variants.close()
     depth_of_cov.close()
     ''' Convert sets of low cov positions into tuples representing zero-indexed
     spans of masked positions (start, end).'''
     masked_pos = dict()
     for segment in 'PB2 PB1 PA HA NP NA M NS'.split(' '):
-        masked_pos[segment] = sorted(low_cov_pos[segment])
+        masked_pos[segment] = low_cov_pos[segment].union(ambig_pos[segment])
+        masked_pos[segment] = sorted(masked_pos[segment])
     spans = {segment: set() for segment in segments}
     segments = [segment for segment in segments
                 if masked_pos[segment] != list()]
@@ -855,6 +908,8 @@ def mask_ambig_low_cov(out_name, min_depth, vaf_call, vaf_ambig,
                 span_end = pos_A
                 spans[segment].add((span_start - 1, span_end - 1))
                 span_start = pos_B
+        span_end = masked_pos[segment][-1]
+        spans[segment].add((span_start - 1, span_end - 1))
     spans = {segment: sorted(spans[segment]) for segment in segments}
     ''' Write spans of low cov positions to TSV file for depth of coverage
     plots. '''
@@ -878,29 +933,11 @@ def mask_ambig_low_cov(out_name, min_depth, vaf_call, vaf_ambig,
                 line = [segment_name[segment], position]
                 line = '\t'.join(str(i) for i in line)
                 output_file.write(line + '\n')
-    ''' Convert sets of masked positions into tuples representing zero-indexed
-    spans of masked positions (start, end).'''
-    masked_pos = dict()
-    for segment in 'PB2 PB1 PA HA NP NA M NS'.split(' '):
-        masked_pos[segment] = low_cov_pos[segment].union(ambig_pos[segment])
-        masked_pos[segment] = sorted(masked_pos[segment])
-    spans = {segment: set() for segment in segments}
-    segments = [segment for segment in segments
-                if masked_pos[segment] != list()]
-    for segment in segments:
-        span_start = masked_pos[segment][0]
-        for pos_A, pos_B in zip(masked_pos[segment][:-1],
-                                masked_pos[segment][1:]):
-            if pos_B != pos_A + 1:
-                span_end = pos_A
-                spans[segment].add((span_start - 1, span_end - 1))
-                span_start = pos_B
-    spans = {segment: sorted(spans[segment]) for segment in segments}
     ''' Write spans of masked positions to BED file in BedGraph format. '''
     with open(os.path.join(out_name, 'masked.bed'), 'w') as output_file:
         for segment, segment_spans in spans.items():
             for (start, end) in segment_spans:
-                line = [segment_name[segment], start, end, 0]
+                line = [segment_name[segment], start, end + 1, 0]
                 line = '\t'.join(str(i) for i in line)
                 output_file.write(line + '\n')
 
@@ -1044,7 +1081,7 @@ def make_plots(out_name, collect_garbage):
     depth_of_cov = os.path.join(out_name, 'depth_of_cov_freebayes.tsv')
     cols = ['seq_name', 'position', 'depth_freebayes']
     freebayes_data = pd.read_csv(depth_of_cov, sep='\t', names=cols)
-    ''' Merge samtools and freebayes data.'''
+    ''' Merge samtools and freebayes data. '''
     data = pd.merge(samtools_data, freebayes_data, on=['seq_name', 'position'],
                     how='left')
     ''' Annotate with segment. '''
