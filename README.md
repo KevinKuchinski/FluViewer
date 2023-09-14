@@ -48,11 +48,13 @@ FluViewer -f <path_to_fwd_reads> -r <path_to_rev_reads> -d <path_to_db_file> -n 
 
 -q : Minimum PHRED score for mapping quality and base quality during variant calling (int, default = 20, min = 0)
 
--v : Variant allele fraction threshold for calling variants (float, default = 0.95, min = 0, max = 1)
+-v : Variant allele fraction threshold for calling variants (float, default = 0.75, min = 0, max = 1)
 
 -V : Variant allele fraction threshold for masking ambiguous variants (float, default = 0.25, min = 0, max = 1
 
 -N : Target depth for pre-normalization of reads (int, default = 200, min = 1)
+
+-L : Coverage depth limit for variant calling (int, default = 200, min = 1)
 
 -T : Threads used for BLAST alignments (int, default = 1, min = 1)
 
