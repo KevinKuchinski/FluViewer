@@ -120,7 +120,7 @@ The report TSV files contain the following columns:
 
 The depth of coverage plots contains the following elements:
 - A black line indicating the depth of coverage pre-variant calling
-- A blue line indicating the depth of coverage post-variant calling
+- A grey line indicating the depth of coverage post-variant calling
 - Red shading covering positions where coverage was too low for base calling
 - Orange lines indicating positions where excess variation resulted in an ambiguous base call
 - Blue lines indicating positions where a variant was called
