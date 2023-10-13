@@ -11,7 +11,7 @@ from math import ceil, log10
 
 
 def main():
-    version = '0.1.9'
+    version = '0.1.10'
     args = parse_args(sys.argv, version)
     print(f'\nFluViewer v{version}')
     print('https://github.com/KevinKuchinski/FluViewer/\n')
@@ -23,7 +23,8 @@ def main():
     check_input_files(args['-f'], args['-r'], args['-d'])
     check_database(args['-d'])
     make_output_dir(args['-n'])
-    normalize_depth(args['-n'], args['-f'], args['-r'], args['-N'], args['-g'])
+    normalize_depth(args['-n'], args['-f'], args['-r'], args['-N'], args['-M'],
+                    args['-g'])
     assemble_contigs(args['-n'], args['-g'])
     blast_results = blast_contigs(args['-d'], args['-n'], args['-g'],
                                   args['-T'], args['-i'], args['-l'])
@@ -74,12 +75,14 @@ def parse_args(args, version):
     required_args = {'-n', '-f', '-r', '-d'}
     arg_value_types = {'-n': str, '-f': str, '-r': str, '-d': str, '-i': float,
                        '-l': int, '-D': int, '-q': int, '-v': float,
-                       '-V': float, '-N': int, '-L': int, '-T': int, '-g': bool}
-    min_arg_values = {'-i': 0, '-l': 32, '-D': 1, '-q': 0,
-                      '-v': 0, '-V': 0, '-N': 1, '-L':1, '-T': 0}
+                       '-V': float, '-N': int, '-L': int, '-T': int, '-M': int,
+                       '-g': bool}
+    min_arg_values = {'-i': 0, '-l': 32, '-D': 1, '-q': 0, '-v': 0, '-V': 0,
+                      '-N': 1, '-L':1, '-T': 1, '-M': 1}
     max_arg_values = {'-i': 100, '-v': 1, '-V': 1}
     default_arg_values = {'-i': 90, '-l': 50, '-D': 20, '-q': 20, '-v': 0.75,
-                          '-V': 0.25, '-N': 200, '-L': 200, '-g': True}
+                          '-V': 0.25, '-N': 200, '-L': 200, '-T': 1, '-M': None,
+                          '-g': True}
     ''' Set garbage flag to boolean value if not provided. '''
     if '-g' not in arg_values:
         arg_values['-g'] = True
@@ -200,8 +203,10 @@ def print_usage(version):
           ' (int, default = 200, min = 1)')
     print(' -T : Threads used for contig/scaffold alignments'
           ' (int, default = 1, min = 1)')
-    print(' -g : Disable garbage collection and retain intermediate analysis'
-          ' files (no value provided)')
+    print(' -M : Gigabytes of memory allocated for normalizing reads'
+          ' (int, default = max, min = 1)')
+    print(' -g : Disable garbage collection and retain intermediate analysis files'
+          ' (no value provided)')
     print()
 
 
@@ -218,43 +223,52 @@ def check_database(db):
     ''' Checks the contents of the provided reference sequence database to
     ensure proper header formatting and unambiguous sequences. ''' 
     print('Checking reference sequence database...')
-    total_entries = 0
-    unique_headers = list()
+    seqs = {}
+    headers = []
     with open(db, 'r') as input_file:
         for line in input_file:
-            line = line.strip()
             if line[0] == '>':
-                total_entries += 1
-                header = line
-                unique_headers.append(header)
-                if len(line.split('|')) != 4:
-                    print(f'\nERROR: The header for the following database entry '
-                          f'does not contain the expected number of |-delimited '
-                          f'fields:\n{header}\n')
-                    exit(1)
-                else:
-                    accession, name, segment, subtype = line.split('|')
-                    if any([name.count('(') != 1, name.count(')') != 1,
-                            name[-1] != ')', name.index('(') > name.index(')')]):
-                        print(f'\nERROR: The strain name (strain subtype) for '
-                              f'the following database entry is improperly'
-                              f' formatted:\n{header}\n')
-                        exit(1)
-                    if segment not in 'PB2 PB1 PA HA NP NA M NS'.split(' '):
-                        print(f'\nERROR: The segment indicated for the following '
-                              f'database entry is not recognized:\n{header}\n')
-                        exit(1)
+                header = line.strip()
+                headers.append(header)
+                seqs[header] = ''
             else:
-                if len(line.strip()) != sum(line.count(base) for base in 'ATGC'):
-                        print(f'\nERROR: The sequence provided for the '
-                              f'following database entry contains ambiguous or '
-                              f'lower-case nucleotides:\n{header}\n')
-                        exit(1)
-    unique_headers = Counter(unique_headers)
-    for header in unique_headers:
-        if unique_headers[header] > 1:
-            print(f'\nERROR: The following database entry does not have a unique '
-                  f'header:\n{header}\n')
+                seqs[header] += line.strip()
+    headers = Counter(headers)
+    for header in headers:
+        if headers[header] > 1:
+            print(f'\nERROR: The following header is used for multiple sequences:'
+                  f'\n{header}\n')
+            exit(1)
+    segment_lengths = {'PB2': (2260, 2360), 'PB1': (2260, 2360), 'PA': (2120, 2250),
+                       'HA': (1650, 1800), 'NP': (1480, 1580), 'NA': (1250, 1560),
+                       'M': (975, 1030), 'NS': (815, 900)}
+    for header, seq in seqs.items():
+        if len(header.split('|')) != 4:
+            print(f'\nERROR: The header for the following database entry does not '
+                  f'contain the expected number of |-delimited fields:\n{header}\n')
+            exit(1)
+        else:
+            accession, name, segment, subtype = header.split('|')
+            if any([name.count('(') != 1, name.count(')') != 1,
+                    name[-1] != ')', name.index('(') > name.index(')')]):
+                print(f'\nERROR: The strain_name(strain_subtype) for the following '
+                      f'database entry is improperly formatted:\n{header}\n')
+                exit(1)
+            if segment not in 'PB2 PB1 PA HA NP NA M NS'.split(' '):
+                print(f'\nERROR: The segment indicated for the following database '
+                      f'entry is not recognized:\n{header}\n')
+                exit(1)
+        if len(seq) != sum(seq.count(base) for base in 'ATGC'):
+            print(f'\nERROR: The sequence provided for the following database entry '
+                  f'contains ambiguous or lower-case nucleotides:\n{header}\n')
+            exit(1)
+        min_length = segment_lengths[segment][0]
+        max_length = segment_lengths[segment][1]
+        if not (min_length <= len(seq) <= max_length):
+            print(f'\nERROR: The sequence provided for the following database entry '
+                  f'is not within the expected length range for its indicated '
+                  f'segment ({segment}: {min_length} to {max_length} bases): '
+                  f'\n{header}\n')
             exit(1)
 
 
@@ -320,12 +334,11 @@ def garbage_collection(out_name):
     for file in files:
         file = os.path.join(out_name, file)
         if os.path.isfile(file):
-            os.remove(file)
-    
+            os.remove(file)    
 
 
 def normalize_depth(out_name, fwd_reads_raw, rev_reads_raw, depth,
-                    collect_garbage):
+                    max_memory, collect_garbage):
     ''' BBNorm is run on the input reads to downsample regions of deep coverage
     (using a k-mer frequency approach). This balances coverage, increases
     analysis speed, and limits the impacts of artefactual reads. '''
@@ -334,6 +347,8 @@ def normalize_depth(out_name, fwd_reads_raw, rev_reads_raw, depth,
     rev_reads = os.path.join(out_name, f'R2.fq')
     terminal_command = (f'bbnorm.sh in={fwd_reads_raw} in2={rev_reads_raw} '
                         f'out={fwd_reads} out2={rev_reads} target={depth}')
+    terminal_command = (terminal_command + f' -Xmx{max_memory}g'
+                        if max_memory is not None else terminal_command)
     process_name = 'bbnorm'
     error_code = 2
     run(terminal_command, out_name, process_name, error_code, collect_garbage)
@@ -634,7 +649,7 @@ def blast_scaffolds(db, out_name, collect_garbage, threads):
             collect_garbage)
     scaffolds = os.path.join(out_name, 'scaffolds.fa')
     blast_output = os.path.join(out_name, 'scaffolds_blast.tsv')
-    cols = 'qseqid sseqid bitscore sstart send qseq'
+    cols = 'qseqid sseqid bitscore sstart send qseq sseq'
     terminal_command = (f'blastn -query {scaffolds} -db {db} '
                         f'-num_threads {threads} -max_target_seqs '
                         f'{db_seqs} -outfmt "6 {cols}" > {blast_output}')
@@ -661,6 +676,8 @@ def filter_scaffold_blast_results(blast_results):
     alphabetically. Once the best-matching reference sequence has been selected for
     each segment scaffold, all other alignments are discarded. '''
     print('Filtering scaffold alignments...')
+    ''' Remove reversed alignments (they should be artefactual at this point). '''
+    blast_results = blast_results[blast_results['send'] > blast_results['sstart']]
     ''' Annotate scaffold seqs with segment. '''
     query_annots = blast_results[['qseqid']].drop_duplicates()
     get_segment = lambda row: row['qseqid'].split('|')[1].split('_')[0]
@@ -680,10 +697,6 @@ def filter_scaffold_blast_results(blast_results):
     first_alpha = max_scores[cols].groupby(group_cols).min().reset_index()
     merge_cols = ['segment', 'sseqid']
     blast_results = pd.merge(blast_results, first_alpha, on=merge_cols)
-    get_start = lambda row: min([row['sstart'], row['send']])
-    blast_results['start'] = blast_results.apply(get_start, axis=1)
-    get_end = lambda row: max([row['sstart'], row['send']])
-    blast_results['end'] = blast_results.apply(get_end, axis=1)
     return blast_results
 
 
@@ -704,18 +717,22 @@ def make_mapping_refs(blast_results, db, out_name):
                 best_ref_seqs[header] += line.strip()
     ''' Create mapping ref for each segment. '''
     def make_map_ref(data_frame):
-        data_frame = data_frame.sort_values(by='start')
+        data_frame = data_frame.sort_values(by='sstart')
         sseq = best_ref_seqs[data_frame['sseqid'].min()]
         last_position = 0
         seq = ''
         for index, row in data_frame.iterrows():
-            seq += sseq[last_position:row['start'] - 1]
-            seq += row['qseq'].upper()
-            last_position = row['end']
+            seq += sseq[last_position:row['sstart'] - 1]
+            for qbase, sbase in zip(row['qseq'].upper(), row['sseq'].upper()):
+                if qbase in 'ATGC':
+                    seq += qbase
+                else:
+                    seq += sbase
+            last_position = row['send']
         seq += sseq[last_position:].lower()
         seq = seq.replace('-', '')
         return seq
-    cols = ['sseqid', 'start', 'end', 'qseq']
+    cols = ['sseqid', 'sstart', 'send', 'qseq', 'sseq']
     group_cols = ['sseqid']
     blast_results = blast_results[cols]
     blast_results = blast_results.groupby(group_cols).apply(make_map_ref)
@@ -869,6 +886,7 @@ def mask_ambig_low_cov(out_name, min_depth, vaf_call, vaf_ambig,
         if all([qual >= min_qual, max_vaf >= vaf_call,
                 total_depth >= min_depth]):
             variants.write(line)
+            variant_pos[segment].add(position)
         position -= 1
         for p in ref:
             position += 1
@@ -978,10 +996,22 @@ def make_consensus_seqs(out_name, collect_garbage):
                 clean_seqs[header] += line.strip().upper()
     with open(consensus_seqs, 'w') as output_file:
         for header, seq in clean_seqs.items():
-            header = '|'.join(header.split('|')[:3])
+            header = '|'.join(header.split('|')[:3]) + '|'
             output_file.write(header + '\n')
             output_file.write(seq + '\n')
-
+    ''' Check that consensus seq lenghts are within expected range. '''
+    segment_lengths = {'PB2': (2260, 2360), 'PB1': (2260, 2360), 'PA': (2120, 2250),
+                       'HA': (1650, 1800), 'NP': (1480, 1580), 'NA': (1250, 1560),
+                       'M': (975, 1030), 'NS': (815, 900)}
+    for header, seq in clean_seqs.items():
+        segment = header.split('|')[1]
+        min_length = segment_lengths[segment][0]
+        max_length = segment_lengths[segment][1]
+        if not (min_length <= len(seq) <= max_length):
+            print(f'\nERROR: The consensus sequence generated for segment '
+                  f'{segment} is not within the expected length range '
+                  f'({min_length} to {max_length} bases).\n')
+            exit(22)
 
 def write_report(out_name, collect_garbage):
     ''' Generate a report for each segment. '''
@@ -992,7 +1022,7 @@ def write_report(out_name, collect_garbage):
     terminal_command = (f'samtools idxstats {filtered_alignment} > '
                         f'{reads_mapped}')
     process_name = 'samtools_idxstats'
-    error_code = 22
+    error_code = 23
     run(terminal_command, out_name, process_name, error_code, collect_garbage)
     cols = 'seq_name seq_length reads_mapped reads_unmapped'.split(' ')
     reads_mapped = pd.read_csv(reads_mapped, sep='\t', names=cols)
@@ -1073,7 +1103,7 @@ def make_plots(out_name, collect_garbage):
     depth_of_cov = os.path.join(out_name, 'depth_of_cov_samtools.tsv')
     terminal_command = (f'samtools depth {filtered_alignment} > {depth_of_cov}')
     process_name = 'samtools_depth'
-    error_code = 23
+    error_code = 24
     run(terminal_command, out_name, process_name, error_code, collect_garbage)
     cols = ['seq_name', 'position', 'depth_samtools']
     samtools_data = pd.read_csv(depth_of_cov, sep='\t', names=cols)
@@ -1100,12 +1130,16 @@ def make_plots(out_name, collect_garbage):
     for segment, ax in zip(segments, axs):
         segment_data = data[data['segment']==segment]
         sb.lineplot(x='position', y='depth_samtools', ax=ax, data=segment_data,
-                    color='black')
+                    color='grey')
         sb.lineplot(x='position', y='depth_freebayes', ax=ax, data=segment_data,
-                    color='blue')
+                    color='black')
         ax.set_xlim(1, max_position)
         ax.set_xlabel('Position')
         ax.set_xticks(x_ticks)
+        if ax == axs[-1]:
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        else:
+            ax.set_xticklabels([])
         ax.set_ylim(1, y_max)
         ax.set_ylabel('Read depth')
         ax.set_yscale('log')
@@ -1116,17 +1150,18 @@ def make_plots(out_name, collect_garbage):
             for line in input_file:
                 seq_name, start, stop = line.strip().split('\t')
                 if seq_name.split('|')[1] == segment:
-                    ax.axvspan(int(start), int(stop), color='red', alpha=0.1)
+                    for position in range(int(start), int(stop) + 1):
+                        ax.axvline(position, color='red', alpha = 0.5)
         with open(os.path.join(out_name, 'ambig.tsv'), 'r') as input_file:
             for line in input_file:
                 seq_name, position = line.strip().split('\t')
                 if seq_name.split('|')[1] == segment:
-                    ax.axvline(position, color='orange')
+                    ax.axvline(int(position), color='orange', alpha = 0.5)
         with open(os.path.join(out_name, 'variants.tsv'), 'r') as input_file:
             for line in input_file:
                 seq_name, position = line.strip().split('\t')
                 if seq_name.split('|')[1] == segment:
-                    ax.axvline(position, color='blue')        
+                    ax.axvline(int(position), color='blue', alpha = 0.5)        
     plt.tight_layout()
     plots = os.path.join(out_name, f'{out_name}_depth_of_cov.png')
     plt.savefig(plots, dpi=400)
